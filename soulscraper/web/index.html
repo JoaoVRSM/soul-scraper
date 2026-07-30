@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Painel local de auditoria profunda de links e players.">
+    <title>Site Soul Scraper</title>
+    <link rel="stylesheet" href="/static/styles.css?v=5">
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Site Soul Scraper">
+        <span class="brand-mark" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </span>
+        <span>
+          <strong>SOUL</strong>
+          <small>CRAWLER</small>
+        </span>
+      </a>
+      <div class="system-state">
+        <span class="pulse"></span>
+        <span id="system-label">Sistema pronto</span>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">AUDITORIA AUTORIZADA · DEEP CRAWL</p>
+          <h1>Encontre cada referência.<br><span>Até a alma do site.</span></h1>
+          <p class="hero-copy">
+            Percorra páginas, subdomínios, scripts e DOM dinâmico. Centralize
+            Byse, DoodStream, MixDrop e Streamtape em uma única varredura.
+          </p>
+        </div>
+        <div class="hero-orbit" aria-hidden="true">
+          <div class="orbit orbit-one"></div>
+          <div class="orbit orbit-two"></div>
+          <div class="core"><span></span></div>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <form id="crawl-form" class="panel control-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">NOVA AUDITORIA</p>
+              <h2>Defina o alvo</h2>
+            </div>
+            <span class="step-badge">01</span>
+          </div>
+
+          <label class="field field-url">
+            <span>URL do seu site</span>
+            <div class="input-shell">
+              <span class="protocol">URL</span>
+              <input id="url" name="url" type="url" required
+                placeholder="https://seu-site.com" autocomplete="url">
+            </div>
+          </label>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>Máximo de páginas</span>
+              <input id="max-pages" type="number" value="5000" min="1" max="100000">
+            </label>
+            <label class="field">
+              <span>Profundidade</span>
+              <input id="max-depth" type="number" value="20" min="0" max="100">
+            </label>
+            <label class="field">
+              <span>Concorrência</span>
+              <input id="concurrency" type="number" value="24" min="1" max="64">
+            </label>
+            <label class="field">
+              <span>Abas Chromium</span>
+              <input id="browser-concurrency" type="number" value="6" min="1" max="12">
+            </label>
+            <label class="field">
+              <span>Timeout (s)</span>
+              <input id="timeout" type="number" value="20" min="1" max="180">
+            </label>
+          </div>
+
+          <details class="advanced">
+            <summary>
+              <span>Configurações avançadas</span>
+              <span class="chevron">⌄</span>
+            </summary>
+            <div class="advanced-content">
+              <div class="field-grid">
+                <label class="field">
+                  <span>Perfil de desempenho</span>
+                  <select id="performance-profile">
+                    <option value="balanced">Equilibrado</option>
+                    <option value="powerful" selected>Potente</option>
+                    <option value="maximum">Máximo</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Atraso por requisição</span>
+                  <input id="delay" type="number" value="0" min="0" max="60" step="0.1">
+                </label>
+                <label class="field">
+                  <span>Limite por resposta (MB)</span>
+                  <input id="max-mb" type="number" value="8" min="0.1" max="100" step="0.1">
+                </label>
+              </div>
+              <p class="performance-hint">Potente: 24 requisições e 6 abas. Máximo: 40 requisições e 10 abas.</p>
+            </div>
+          </details>
+
+          <div class="toggle-list">
+            <label class="toggle-row">
+              <span><strong>Incluir subdomínios</strong><small>Vasculha toda a árvore do domínio</small></span>
+              <input id="subdomains" type="checkbox" checked><i></i>
+            </label>
+            <label class="toggle-row">
+              <span><strong>Renderizar JavaScript</strong><small>Usa Chromium para revelar players dinâmicos</small></span>
+              <input id="render-js" type="checkbox" checked><i></i>
+            </label>
+            <label class="toggle-row">
+              <span><strong>Validar saúde dos links</strong><small>Testa os players e usa Chromium quando necessário</small></span>
+              <input id="validate-links" type="checkbox" checked><i></i>
+            </label>
+            <label class="toggle-row">
+              <span><strong>Descobrir sitemap</strong><small>Inclui rotas que não aparecem na navegação</small></span>
+              <input id="sitemap" type="checkbox" checked><i></i>
+            </label>
+            <label class="toggle-row">
+              <span><strong>Respeitar robots.txt</strong><small>Desative apenas em sites que você administra</small></span>
+              <input id="respect-robots" type="checkbox" checked><i></i>
+            </label>
+          </div>
+
+          <div id="form-error" class="notice error-notice" role="alert" hidden></div>
+          <button id="start-button" class="primary-button" type="submit">
+            <span class="button-icon">↗</span>
+            <span>INICIAR VARREDURA</span>
+          </button>
+        </form>
+
+        <section class="panel monitor-panel" aria-live="polite">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">MONITOR AO VIVO</p>
+              <h2>Estado da varredura</h2>
+            </div>
+            <span id="job-state" class="status-badge idle">Aguardando</span>
+          </div>
+
+          <div id="empty-monitor" class="empty-monitor">
+            <div class="radar">
+              <span class="radar-ring ring-one"></span>
+              <span class="radar-ring ring-two"></span>
+              <span class="radar-sweep"></span>
+              <span class="radar-dot"></span>
+            </div>
+            <h3>Pronto para mergulhar</h3>
+            <p>Cole uma URL e inicie a auditoria. O progresso aparecerá aqui em tempo real.</p>
+          </div>
+
+          <div id="active-monitor" hidden>
+            <div class="target-row">
+              <span>ALVO ATUAL</span>
+              <strong id="target-url">—</strong>
+            </div>
+            <div class="progress-track"><span id="progress-bar"></span></div>
+            <div class="progress-meta">
+              <span><strong id="processed-count">0</strong> processadas</span>
+              <span><strong id="discovered-count">0</strong> descobertas</span>
+              <span><strong id="findings-count">0</strong> referências</span>
+            </div>
+            <div class="provider-grid">
+              <article><span class="provider-dot byse"></span><small>BYSE</small><strong id="byse-count">0</strong></article>
+              <article><span class="provider-dot dood"></span><small>DOODSTREAM</small><strong id="doodstream-count">0</strong></article>
+              <article><span class="provider-dot mix"></span><small>MIXDROP</small><strong id="mixdrop-count">0</strong></article>
+              <article><span class="provider-dot tape"></span><small>STREAMTAPE</small><strong id="streamtape-count">0</strong></article>
+            </div>
+            <div class="health-overview">
+              <div><span class="health-light healthy"></span><small>Saudáveis</small><strong id="healthy-count">0</strong></div>
+              <div><span class="health-light attention"></span><small>Atenção</small><strong id="attention-count">0</strong></div>
+              <div><span class="health-light broken"></span><small>Quebrados</small><strong id="broken-count">0</strong></div>
+            </div>
+            <p id="validation-progress" class="validation-progress" hidden></p>
+            <button id="cancel-button" class="ghost-button danger" type="button">Cancelar auditoria</button>
+          </div>
+        </section>
+      </section>
+
+      <section id="results-section" class="results-section" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">RESULTADOS</p>
+            <h2>Referências encontradas</h2>
+          </div>
+          <div class="download-group">
+            <button id="revalidate-button" class="ghost-button" type="button">Revalidar</button>
+            <button id="reextract-button" class="ghost-button repair" type="button">Reextrair quebrados</button>
+            <a id="download-catalog" class="ghost-button primary-download" href="#" download>Catálogo JSON</a>
+            <a id="download-movies" class="ghost-button" href="#" download>Filmes JSON</a>
+            <a id="download-series" class="ghost-button series-download" href="#" download>Séries JSON</a>
+            <a id="download-json" class="ghost-button" href="#">JSON completo</a>
+            <a id="download-findings" class="ghost-button" href="#">Referências CSV</a>
+            <a id="download-pages" class="ghost-button" href="#">Páginas CSV</a>
+          </div>
+        </div>
+
+        <div class="results-toolbar">
+          <label class="search-box">
+            <span>⌕</span>
+            <input id="results-search" type="search" placeholder="Filtrar por URL ou referência">
+          </label>
+          <label class="select-box">
+            <span>Provedor</span>
+            <select id="provider-filter">
+              <option value="all">Todos</option>
+              <option value="byse">Byse</option>
+              <option value="doodstream">DoodStream</option>
+              <option value="mixdrop">MixDrop</option>
+              <option value="streamtape">Streamtape</option>
+            </select>
+          </label>
+          <label class="select-box">
+            <span>Saúde</span>
+            <select id="health-filter">
+              <option value="all">Todos</option>
+              <option value="working">Funcionando</option>
+              <option value="working_browser">Validado no navegador</option>
+              <option value="redirected">Redirecionado</option>
+              <option value="browser_required">Exige navegador</option>
+              <option value="dead">Quebrado</option>
+              <option value="timeout">Timeout</option>
+              <option value="malformed">Malformado</option>
+              <option value="rate_limited">Limite de acesso</option>
+              <option value="unchecked">Não verificado</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="table-shell">
+          <table>
+            <thead>
+              <tr><th>Filme</th><th>TMDB</th><th>Provedor</th><th>Saúde</th><th>Página de origem</th><th>Referência</th><th>Contexto</th></tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+          <div id="results-empty" class="table-empty" hidden>Nenhuma referência corresponde ao filtro.</div>
+        </div>
+      </section>
+
+      <section id="activity-section" class="activity-section" hidden>
+        <div class="section-heading compact">
+          <div>
+            <p class="section-kicker">ATIVIDADE</p>
+            <h2>Últimas páginas processadas</h2>
+          </div>
+        </div>
+        <div id="activity-list" class="activity-list"></div>
+      </section>
+    </main>
+
+    <footer>
+      <span>SOUL CRAWLER v1.0</span>
+      <span>Use somente em domínios autorizados.</span>
+    </footer>
+    <script src="/static/app.js?v=5" defer></script>
+  </body>
+</html>

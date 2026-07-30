@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "site-soul-scraper"
+version = "1.0.0"
+description = "Crawler de auditoria profunda para localizar links e referencias de players em sites proprios."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+  "rich>=13.7,<15",
+  "selectolax>=0.3.21,<1",
+  "tldextract>=5.1,<6",
+  "typer>=0.12,<1",
+  "uvicorn[standard]>=0.30,<1",
+]
+
+[project.optional-dependencies]
+render = ["playwright>=1.45,<2"]
+dev = ["pytest>=8.2,<9", "pytest-asyncio>=0.23,<1"]
+
+[project.scripts]
+site-soul-scraper = "soulscraper.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["soulscraper*"]
+
+[tool.setuptools.package-data]
+soulscraper = ["web/*.html", "web/*.css", "web/*.js"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
