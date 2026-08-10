@@ -182,7 +182,7 @@ function configureDownloads(downloads) {
 async function pollJob() {
   if (!state.jobId) return;
   try {
-    const job = await api(`/api/jobs/${state.jobId}`);
+    const job = await api(`/api/v1/crawls/${state.jobId}`);
     updateJob(job);
   } catch (error) {
     clearInterval(state.timer);
@@ -198,7 +198,7 @@ form.addEventListener("submit", async (event) => {
   resultsSection.hidden = true;
   startButton.disabled = true;
   try {
-    const job = await api("/api/jobs", {
+    const job = await api("/api/v1/crawls", {
       method: "POST",
       body: JSON.stringify(payloadFromForm()),
     });
@@ -218,7 +218,7 @@ cancelButton.addEventListener("click", async () => {
   if (!state.jobId) return;
   cancelButton.disabled = true;
   try {
-    const job = await api(`/api/jobs/${state.jobId}/cancel`, { method: "POST" });
+    const job = await api(`/api/v1/crawls/${state.jobId}/cancel`, { method: "POST" });
     updateJob(job);
   } catch (error) {
     setError(error.message);
@@ -235,7 +235,7 @@ async function loadFindings() {
   const params = new URLSearchParams({ provider, health, limit: "500" });
   if (search) params.set("search", search);
   try {
-    const response = await api(`/api/jobs/${state.jobId}/findings?${params}`);
+    const response = await api(`/api/v1/crawls/${state.jobId}/findings?${params}`);
     renderFindings(response.items);
   } catch (error) {
     setError(error.message);
@@ -329,7 +329,7 @@ async function runJobAction(endpoint) {
   if (!state.jobId) return;
   setError();
   try {
-    const job = await api(`/api/jobs/${state.jobId}/${endpoint}`, { method: "POST" });
+    const job = await api(`/api/v1/crawls/${state.jobId}/${endpoint}`, { method: "POST" });
     updateJob(job);
     clearInterval(state.timer);
     state.timer = setInterval(pollJob, 850);
@@ -347,7 +347,7 @@ async function resumeLastJob() {
   if (!savedJobId) return;
   try {
     state.jobId = savedJobId;
-    const job = await api(`/api/jobs/${savedJobId}`);
+    const job = await api(`/api/v1/crawls/${savedJobId}`);
     $("#url").value = job.target_url || "";
     updateJob(job);
     if (["queued", "running", "validating", "reextracting"].includes(job.status)) {
@@ -359,7 +359,7 @@ async function resumeLastJob() {
   }
 }
 
-api("/api/health").catch(() => {
+api("/api/v1/health").catch(() => {
   $("#system-label").textContent = "Servidor indisponível";
   $(".pulse").style.background = "#ff6d72";
 });

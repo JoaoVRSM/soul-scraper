@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -171,3 +172,35 @@ def web(
     console.print(f"[bold cyan]Site Soul Scraper[/] em http://{host}:{port}")
     console.print("[dim]Pressione Ctrl+C para encerrar.[/]")
     uvicorn.run("soulscraper.webapp:app", host=host, port=port, log_level="warning")
+
+
+@app.command("api")
+def api_server(
+    host: str = typer.Option(
+        "127.0.0.1",
+        help="Endereço da API. Use 0.0.0.0 somente em uma rede confiável.",
+    ),
+    port: int = typer.Option(8787, min=1, max=65535, help="Porta da API."),
+    cors_origins: str | None = typer.Option(
+        None,
+        "--cors-origins",
+        help="Origens CORS separadas por vírgula, por exemplo http://localhost:3000.",
+    ),
+) -> None:
+    """Inicia a API REST v1 e sua documentação OpenAPI."""
+    try:
+        import uvicorn
+    except ImportError as exc:
+        console.print(
+            '[bold red]Erro:[/] dependências web ausentes. Execute: '
+            'python -m pip install -e "."'
+        )
+        raise typer.Exit(code=2) from exc
+
+    if cors_origins:
+        os.environ["SOULSCRAPER_CORS_ORIGINS"] = cors_origins
+
+    console.print(f"[bold cyan]Soul Scraper API[/] em http://{host}:{port}/api/v1")
+    console.print(f"[bold green]Documentação interativa:[/] http://{host}:{port}/docs")
+    console.print("[dim]Pressione Ctrl+C para encerrar.[/]")
+    uvicorn.run("soulscraper.webapp:app", host=host, port=port, log_level="info")

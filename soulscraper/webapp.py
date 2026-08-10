@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -9,18 +10,25 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from .crawler import CrawlConfig, SiteCrawler
 from .models import CrawlResult, PageRecord
-from .reporting import write_reports
+from .reporting import (
+    build_catalog_export,
+    build_movies_export,
+    build_series_export,
+    write_reports,
+)
 from .validator import LinkCheck, LinkValidator
 
 
 WEB_DIR = Path(__file__).with_name("web")
 REPORT_ROOT = Path("resultados") / "web"
+API_PREFIX = "/api/v1"
 PROVIDERS = ("byse", "doodstream", "mixdrop", "streamtape")
 DOWNLOAD_FILES = {
     "catalogo-links.json",
@@ -56,19 +64,115 @@ class CrawlRequest(BaseModel):
         return value
 
 
+class ScrapeRequest(CrawlRequest):
+    output: Literal["catalog", "full", "movies", "series"] = "catalog"
+    download: bool = False
+
+
+JobStatus = Literal[
+    "queued",
+    "running",
+    "validating",
+    "reextracting",
+    "completed",
+    "failed",
+    "cancelled",
+]
+
+
+class ApiLinks(BaseModel):
+    self: str
+    result: str
+    pages: str
+    findings: str
+    catalog: str
+
+
+class JobResponse(BaseModel):
+    id: str
+    target_url: str
+    status: JobStatus
+    created_at: str
+    updated_at: str
+    processed: int
+    discovered: int
+    findings_count: int
+    validated_count: int
+    validation_total: int
+    providers: dict[str, int]
+    health: dict[str, int]
+    latest_pages: list[dict[str, Any]]
+    error: str | None
+    api: ApiLinks
+    downloads: dict[str, str]
+
+
+class JobListResponse(BaseModel):
+    total: int
+    offset: int
+    items: list[JobResponse]
+
+
+class FindingResponse(BaseModel):
+    source_page: str
+    provider: str
+    reference: str
+    resolved_url: str | None
+    context: str
+    movie_name: str | None
+    tmdb_id: int | None
+    media_type: str | None
+    tag: str | None
+    attribute: str | None
+    depth: int
+    health_status: str
+    health_http_status: int | None
+    health_final_url: str | None
+    health_checked_at: str | None
+    health_error: str | None
+
+
+class PageResponse(BaseModel):
+    url: str
+    final_url: str
+    depth: int
+    status: int | None
+    content_type: str
+    elapsed_ms: int
+    bytes_read: int
+    links_found: int
+    findings_found: int
+    movie_name: str | None
+    tmdb_id: int | None
+    media_type: str | None
+    rendered: bool
+    error: str | None
+
+
+class FindingsResponse(BaseModel):
+    total: int
+    offset: int
+    items: list[FindingResponse]
+
+
+class PagesResponse(BaseModel):
+    total: int
+    offset: int
+    items: list[PageResponse]
+
+
+class CrawlResultResponse(BaseModel):
+    summary: dict[str, Any]
+    config: dict[str, Any]
+    pages: list[PageResponse]
+    findings: list[FindingResponse]
+
+
 @dataclass
 class CrawlJob:
     id: str
     request: CrawlRequest
-    status: Literal[
-        "queued",
-        "running",
-        "validating",
-        "reextracting",
-        "completed",
-        "failed",
-        "cancelled",
-    ] = "queued"
+    status: JobStatus = "queued"
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     processed: int = 0
@@ -102,9 +206,16 @@ class CrawlJob:
             "health": self.health,
             "latest_pages": self.latest_pages[-100:],
             "error": self.error,
+            "api": {
+                "self": f"{API_PREFIX}/crawls/{self.id}",
+                "result": f"{API_PREFIX}/crawls/{self.id}/result",
+                "pages": f"{API_PREFIX}/crawls/{self.id}/pages",
+                "findings": f"{API_PREFIX}/crawls/{self.id}/findings",
+                "catalog": f"{API_PREFIX}/crawls/{self.id}/catalog",
+            },
             "downloads": (
                 {
-                    name: f"/api/jobs/{self.id}/download/{name}"
+                    name: f"{API_PREFIX}/crawls/{self.id}/download/{name}"
                     for name in sorted(DOWNLOAD_FILES)
                 }
                 if self.status == "completed"
@@ -140,6 +251,9 @@ class JobManager:
         if not job:
             raise HTTPException(status_code=404, detail="Auditoria não encontrada.")
         return job
+
+    def list(self) -> list[CrawlJob]:
+        return sorted(self.jobs.values(), key=lambda job: job.created_at, reverse=True)
 
     async def cancel(self, job_id: str) -> CrawlJob:
         job = self.get(job_id)
@@ -353,9 +467,29 @@ class JobManager:
 manager = JobManager()
 app = FastAPI(
     title="Site Soul Scraper",
-    description="Painel local para auditorias autorizadas de sites.",
-    version="1.0.0",
+    description=(
+        "API REST e painel local para auditorias autorizadas de sites. "
+        "Use os endpoints /api/v1 para novas integrações."
+    ),
+    version="2.0.0",
+    openapi_url="/api/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
+
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("SOULSCRAPER_CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+if cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+    )
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 
@@ -367,43 +501,105 @@ async def index() -> FileResponse:
     )
 
 
-@app.get("/api/health")
+@app.get("/painel", include_in_schema=False)
+async def dashboard() -> FileResponse:
+    return FileResponse(
+        WEB_DIR / "index.html",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/integracao", include_in_schema=False)
+async def api_portal() -> FileResponse:
+    return FileResponse(
+        WEB_DIR / "api.html",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/api/health", include_in_schema=False)
+@app.get(f"{API_PREFIX}/health", tags=["API v1"])
 async def health() -> dict[str, str]:
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": "2.0.0"}
 
 
-@app.post("/api/jobs", status_code=202)
-async def create_job(request: CrawlRequest) -> dict[str, Any]:
+@app.post(
+    f"{API_PREFIX}/scrape",
+    tags=["API v1"],
+    summary="Raspa um site e devolve o JSON ao concluir",
+    response_model=None,
+)
+async def scrape_and_wait(request: ScrapeRequest) -> JSONResponse:
+    """Executa a raspagem na mesma requisição e retorna o formato JSON escolhido."""
+    crawl_request = CrawlRequest.model_validate(
+        request.model_dump(exclude={"output", "download"})
+    )
+    job = await manager.create(crawl_request)
+    if not job.task:
+        raise HTTPException(status_code=500, detail="A raspagem não pôde ser iniciada.")
+
+    await job.task
+    if job.status == "failed":
+        raise HTTPException(status_code=502, detail=job.error or "A raspagem falhou.")
+    if job.status == "cancelled" or not job.result:
+        raise HTTPException(status_code=409, detail="A raspagem foi cancelada.")
+
+    outputs: dict[str, tuple[Any, str]] = {
+        "catalog": (build_catalog_export(job.result), "catalogo-links.json"),
+        "full": (job.result.to_dict(), "resultado.json"),
+        "movies": (build_movies_export(job.result), "filmes-links.json"),
+        "series": (build_series_export(job.result), "series-links.json"),
+    }
+    payload, filename = outputs[request.output]
+    disposition = "attachment" if request.download else "inline"
+    return JSONResponse(
+        content=payload,
+        headers={
+            "X-Crawl-Job-Id": job.id,
+            "Content-Disposition": f'{disposition}; filename="{filename}"',
+        },
+    )
+
+
+@app.post("/api/jobs", status_code=202, include_in_schema=False)
+@app.post(f"{API_PREFIX}/crawls", status_code=202, tags=["API v1"])
+async def create_job(request: CrawlRequest) -> JobResponse:
     try:
         job = await manager.create(request)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return job.public()
+    return JobResponse.model_validate(job.public())
 
 
-@app.get("/api/jobs/{job_id}")
-async def get_job(job_id: str) -> dict[str, Any]:
-    return manager.get(job_id).public()
+@app.get("/api/jobs/{job_id}", include_in_schema=False)
+@app.get(f"{API_PREFIX}/crawls/{{job_id}}", tags=["API v1"])
+async def get_job(job_id: str) -> JobResponse:
+    return JobResponse.model_validate(manager.get(job_id).public())
 
 
-@app.post("/api/jobs/{job_id}/cancel")
-async def cancel_job(job_id: str) -> dict[str, Any]:
+@app.post("/api/jobs/{job_id}/cancel", include_in_schema=False)
+@app.delete(f"{API_PREFIX}/crawls/{{job_id}}", tags=["API v1"])
+@app.post(f"{API_PREFIX}/crawls/{{job_id}}/cancel", tags=["API v1"])
+async def cancel_job(job_id: str) -> JobResponse:
     job = await manager.cancel(job_id)
     await asyncio.sleep(0)
-    return job.public()
+    return JobResponse.model_validate(job.public())
 
 
-@app.post("/api/jobs/{job_id}/validate")
-async def revalidate_job(job_id: str) -> dict[str, Any]:
-    return (await manager.revalidate(job_id)).public()
+@app.post("/api/jobs/{job_id}/validate", include_in_schema=False)
+@app.post(f"{API_PREFIX}/crawls/{{job_id}}/validate", tags=["API v1"])
+async def revalidate_job(job_id: str) -> JobResponse:
+    return JobResponse.model_validate((await manager.revalidate(job_id)).public())
 
 
-@app.post("/api/jobs/{job_id}/reextract")
-async def reextract_job(job_id: str) -> dict[str, Any]:
-    return (await manager.reextract_broken(job_id)).public()
+@app.post("/api/jobs/{job_id}/reextract", include_in_schema=False)
+@app.post(f"{API_PREFIX}/crawls/{{job_id}}/reextract", tags=["API v1"])
+async def reextract_job(job_id: str) -> JobResponse:
+    return JobResponse.model_validate((await manager.reextract_broken(job_id)).public())
 
 
-@app.get("/api/jobs/{job_id}/findings")
+@app.get("/api/jobs/{job_id}/findings", include_in_schema=False)
+@app.get(f"{API_PREFIX}/crawls/{{job_id}}/findings", tags=["API v1"])
 async def get_findings(
     job_id: str,
     provider: str | None = Query(default=None),
@@ -411,10 +607,10 @@ async def get_findings(
     search: str | None = Query(default=None, max_length=200),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=1000),
-) -> dict[str, Any]:
+) -> FindingsResponse:
     job = manager.get(job_id)
     if not job.result:
-        return {"total": 0, "offset": offset, "items": []}
+        return FindingsResponse(total=0, offset=offset, items=[])
     findings = job.result.findings
     if provider and provider != "all":
         findings = [item for item in findings if item.provider == provider]
@@ -431,14 +627,96 @@ async def get_findings(
             or needle in (item.movie_name or "").casefold()
             or needle in (str(item.tmdb_id) if item.tmdb_id is not None else "")
         ]
-    return {
+    return FindingsResponse.model_validate({
         "total": len(findings),
         "offset": offset,
         "items": [item.to_dict() for item in findings[offset : offset + limit]],
-    }
+    })
 
 
-@app.get("/api/jobs/{job_id}/download/{filename}")
+@app.get(f"{API_PREFIX}/crawls", tags=["API v1"])
+async def list_jobs(
+    status: str | None = Query(default=None),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> JobListResponse:
+    jobs = manager.list()
+    if status:
+        jobs = [job for job in jobs if job.status == status]
+    return JobListResponse.model_validate({
+        "total": len(jobs),
+        "offset": offset,
+        "items": [job.public() for job in jobs[offset : offset + limit]],
+    })
+
+
+def require_result(job_id: str) -> CrawlJob:
+    job = manager.get(job_id)
+    if not job.result:
+        raise HTTPException(
+            status_code=409,
+            detail="O resultado ainda não está disponível. Consulte o status da raspagem.",
+        )
+    return job
+
+
+@app.get(f"{API_PREFIX}/crawls/{{job_id}}/result", tags=["API v1"])
+async def get_result(job_id: str) -> CrawlResultResponse:
+    job = require_result(job_id)
+    assert job.result is not None
+    return CrawlResultResponse.model_validate(job.result.to_dict())
+
+
+@app.get(f"{API_PREFIX}/crawls/{{job_id}}/pages", tags=["API v1"])
+async def get_pages(
+    job_id: str,
+    search: str | None = Query(default=None, max_length=200),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=1000),
+) -> PagesResponse:
+    job = require_result(job_id)
+    assert job.result is not None
+    pages = job.result.pages
+    if search:
+        needle = search.casefold()
+        pages = [
+            page
+            for page in pages
+            if needle in page.url.casefold() or needle in page.final_url.casefold()
+        ]
+    return PagesResponse.model_validate({
+        "total": len(pages),
+        "offset": offset,
+        "items": [page.to_dict() for page in pages[offset : offset + limit]],
+    })
+
+
+@app.get(f"{API_PREFIX}/crawls/{{job_id}}/catalog", tags=["API v1"])
+async def get_catalog(job_id: str) -> dict[str, list[dict[str, Any]]]:
+    job = require_result(job_id)
+    assert job.result is not None
+    return build_catalog_export(job.result)
+
+
+@app.get(f"{API_PREFIX}/crawls/{{job_id}}/movies", tags=["API v1"])
+async def get_movies(job_id: str) -> list[dict[str, Any]]:
+    job = require_result(job_id)
+    assert job.result is not None
+    return build_movies_export(job.result)
+
+
+@app.get(f"{API_PREFIX}/crawls/{{job_id}}/series", tags=["API v1"])
+async def get_series(job_id: str) -> list[dict[str, Any]]:
+    job = require_result(job_id)
+    assert job.result is not None
+    return build_series_export(job.result)
+
+
+@app.get("/api/jobs/{job_id}/download/{filename}", include_in_schema=False)
+@app.get(
+    f"{API_PREFIX}/crawls/{{job_id}}/download/{{filename}}",
+    tags=["API v1"],
+)
 async def download(job_id: str, filename: str) -> FileResponse:
     job = manager.get(job_id)
     if filename not in DOWNLOAD_FILES or not job.output_dir:

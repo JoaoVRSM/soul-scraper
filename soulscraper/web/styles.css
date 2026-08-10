@@ -111,6 +111,21 @@ body::before {
   letter-spacing: .08em;
 }
 
+.topbar-actions { display: flex; align-items: center; gap: 18px; }
+.api-link {
+  color: var(--green);
+  border: 1px solid rgba(184,255,61,.26);
+  background: rgba(184,255,61,.05);
+  border-radius: 9px;
+  padding: 9px 12px;
+  text-decoration: none;
+  font: 750 9px var(--mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  transition: .2s;
+}
+.api-link:hover { border-color: rgba(184,255,61,.5); background: rgba(184,255,61,.1); }
+
 .pulse {
   width: 7px;
   height: 7px;
@@ -481,6 +496,8 @@ footer {
 @media (max-width: 620px) {
   .topbar { height: 68px; padding: 0 17px; }
   .system-state #system-label { display: none; }
+  .topbar-actions { gap: 10px; }
+  .api-link { padding: 8px 9px; font-size: 8px; }
   .shell { padding: 0 14px 60px; }
   .hero { padding: 54px 2px; }
   h1 { font-size: 43px; }

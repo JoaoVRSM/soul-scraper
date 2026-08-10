@@ -8,7 +8,7 @@
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-interface-009688?logo=fastapi&logoColor=white">
   <img alt="Playwright" src="https://img.shields.io/badge/Playwright-Chromium-2EAD33?logo=playwright&logoColor=white">
-  <img alt="Testes" src="https://img.shields.io/badge/testes-24%20passando-ADFF2F">
+  <img alt="Testes" src="https://img.shields.io/badge/testes-28%20passando-ADFF2F">
 </p>
 
 O **Soul Scraper** percorre páginas, subdomínios, iframes, scripts, respostas
@@ -80,6 +80,96 @@ http://127.0.0.1:8787
 No Windows, você também pode dar dois cliques em `iniciar_interface.bat`.
 
 Para encerrar o servidor, pressione `Ctrl+C` no PowerShell.
+
+## API REST
+
+Inicie a API local:
+
+```powershell
+.\.venv\Scripts\python.exe -m soulscraper api --port 8787
+```
+
+No Windows, também é possível dar dois cliques em `iniciar_api.bat`. A
+documentação interativa fica em `http://127.0.0.1:8787/docs`, o schema OpenAPI
+em `http://127.0.0.1:8787/api/openapi.json` e a API versionada usa o prefixo
+`/api/v1`. O painel completo permanece na página inicial e o portal com
+explicações, exemplos e teste interativo fica disponível em `/integracao`.
+
+Para enviar a URL e receber o JSON pronto na mesma requisição:
+
+```powershell
+$body = @{
+  url = "https://seu-site.com"
+  output = "catalog"
+  render_js = $true
+  validate_links = $true
+} | ConvertTo-Json
+
+$catalogo = Invoke-RestMethod `
+  -Method Post `
+  -Uri "http://127.0.0.1:8787/api/v1/scrape" `
+  -ContentType "application/json" `
+  -Body $body
+
+$catalogo.filmes
+```
+
+O campo `output` aceita `catalog`, `movies`, `series` ou `full`. Para sites
+grandes, use o fluxo assíncrono:
+
+```powershell
+$body = @{
+  url = "https://seu-site.com"
+  max_pages = 500
+  max_depth = 10
+  concurrency = 12
+  browser_concurrency = 2
+  render_js = $true
+  validate_links = $true
+} | ConvertTo-Json
+
+$job = Invoke-RestMethod `
+  -Method Post `
+  -Uri "http://127.0.0.1:8787/api/v1/crawls" `
+  -ContentType "application/json" `
+  -Body $body
+
+$job.id
+```
+
+Consulte o andamento e, após o status `completed`, leia o catálogo:
+
+```powershell
+$id = $job.id
+Invoke-RestMethod "http://127.0.0.1:8787/api/v1/crawls/$id"
+$catalogo = Invoke-RestMethod "http://127.0.0.1:8787/api/v1/crawls/$id/catalog"
+$catalogo.filmes
+```
+
+Endpoints principais:
+
+- `GET /api/v1/health`: saúde da API;
+- `POST /api/v1/scrape`: aguarda a raspagem e devolve o JSON escolhido;
+- `POST /api/v1/crawls`: inicia uma raspagem assíncrona;
+- `GET /api/v1/crawls`: lista as raspagens desta execução;
+- `GET /api/v1/crawls/{id}`: status e progresso;
+- `DELETE /api/v1/crawls/{id}`: cancela uma raspagem ativa;
+- `GET /api/v1/crawls/{id}/result`: resultado técnico completo;
+- `GET /api/v1/crawls/{id}/pages`: páginas com paginação e busca;
+- `GET /api/v1/crawls/{id}/findings`: referências com filtros;
+- `GET /api/v1/crawls/{id}/catalog`: catálogo pronto para integração;
+- `GET /api/v1/crawls/{id}/movies`: somente filmes;
+- `GET /api/v1/crawls/{id}/series`: somente séries e episódios;
+- `GET /api/v1/crawls/{id}/download/{arquivo}`: baixa JSON ou CSV.
+
+Os jobs ficam em memória e são reiniciados quando o servidor é encerrado; os
+arquivos concluídos permanecem em `resultados/web`. Para permitir chamadas de
+um frontend em outra origem, informe as origens explicitamente:
+
+```powershell
+.\.venv\Scripts\python.exe -m soulscraper api `
+  --cors-origins "http://localhost:3000,https://seu-frontend.com"
+```
 
 ## Uso pela linha de comando
 
@@ -219,7 +309,7 @@ soulscraper/
 ├── extractor.py    # extração e metadados
 ├── reporting.py    # JSON e CSV
 ├── validator.py    # saúde dos links
-├── webapp.py       # API local
+├── webapp.py       # API REST e interface local
 └── web/            # interface
 ```
 
