@@ -1,121 +1,166 @@
 # Soul Scraper
 
 <p align="center">
-  <strong>Crawler Python com interface web para auditoria autorizada de players.</strong>
+  <strong>API e crawler Python para encontrar referências de players em domínios autorizados.</strong>
 </p>
 
 <p align="center">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
-  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-interface-009688?logo=fastapi&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white">
   <img alt="Playwright" src="https://img.shields.io/badge/Playwright-Chromium-2EAD33?logo=playwright&logoColor=white">
-  <img alt="Testes" src="https://img.shields.io/badge/testes-28%20passando-ADFF2F">
+  <img alt="Testes" src="https://img.shields.io/badge/testes-30%20passando-ADFF2F">
 </p>
 
 O **Soul Scraper** percorre páginas, subdomínios, iframes, scripts, respostas
 JSON e DOM dinâmico para localizar referências de **Byse, DoodStream, MixDrop e
-Streamtape**. Os resultados são normalizados e exportados em arquivos separados
-para filmes, séries e catálogo completo.
+Streamtape**. Os resultados podem ser consumidos pela API, pela interface web
+ou pela linha de comando.
+
+O uso principal da API é integrar esses resultados ao seu próprio site: o
+backend do seu site envia a URL de outro domínio autorizado, a FastAPI faz a
+raspagem e o JSON retorna na mesma requisição.
 
 > Use somente em domínios que você possui ou tem autorização para auditar.
 
-![Interface principal do Soul Scraper](docs/images/interface-principal.png)
+## Veja primeiro
 
-## Principais recursos
+O projeto abre o sistema de raspagem diretamente em `/`. A documentação para
+integrar a API ao seu próprio site fica em outra tela, acessível pelo botão
+**Integração API** ou pela rota `/integracao`.
 
-- crawler HTTP assíncrono com concorrência configurável;
-- renderização opcional com Chromium para sites dinâmicos;
-- descoberta por links, iframes, `data-*`, scripts, CSS, JSON, sitemap e XHR;
-- captura de nome, tipo do conteúdo e ID do TMDB;
-- separação entre filmes e séries;
-- episódios agrupados por série, temporada e número;
-- links separados em `dublado`, `legendado` e `nao_identificado`;
-- validação de saúde dos links com fallback no navegador;
-- perfis **Equilibrado**, **Potente** e **Máximo**;
-- exportação simplificada em JSON e relatórios técnicos em JSON/CSV;
-- limites de memória e abas para evitar estouro do heap do Chromium.
+<table>
+  <tr>
+    <td><img src="docs/images/interface-principal.png" alt="Painel principal do Soul Scraper"></td>
+    <td><img src="docs/images/configuracoes.png" alt="Filtros, downloads e configurações do resultado"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Painel de auditoria e monitoramento</sub></td>
+    <td align="center"><sub>Resultados, filtros e downloads</sub></td>
+  </tr>
+</table>
 
-## Interface
+### Portal de integração da API
 
-O painel permite controlar profundidade, quantidade de páginas, concorrência,
-abas Chromium, timeout e as opções de descoberta.
+Abra `http://127.0.0.1:8787/integracao` para ver exemplos de integração em
+JavaScript, PHP, Python e cURL.
 
-![Downloads e filtros do resultado](docs/images/configuracoes.png)
+## Escolha o modo de uso
 
-Ao terminar, a interface disponibiliza estes downloads:
+| Modo | Quando usar | Como abrir |
+| --- | --- | --- |
+| **Sistema de raspagem** | Configurar, executar e acompanhar a raspagem | `http://127.0.0.1:8787/` |
+| **Portal da API** | Copiar a integração para usar no seu site | `http://127.0.0.1:8787/integracao` |
+| **API direta** | Outro site envia uma URL e espera o JSON pronto | `POST /api/v1/scrape` |
+| **API assíncrona** | Sites grandes que precisam de progresso e cancelamento | `POST /api/v1/crawls` |
+| **CLI** | Automatizar em scripts ou tarefas agendadas | `python -m soulscraper crawl ...` |
 
-- `catalogo-links.json`: filmes, séries e conteúdos não identificados;
-- `filmes-links.json`: somente filmes;
-- `series-links.json`: somente séries e seus episódios;
-- `resultado.json`: relatório técnico completo;
-- `referencias.csv`: todas as referências encontradas;
-- `paginas.csv`: páginas processadas, status e tempos.
+## Como o fluxo funciona
+
+```mermaid
+flowchart LR
+    A[Seu site] -->|POST com a URL de origem| B[FastAPI Soul Scraper]
+    B --> C[Outro site autorizado]
+    C --> B
+    B -->|Catálogo JSON| A
+```
 
 ## Instalação no Windows
 
-Requer Python 3.10 ou superior.
+Requisitos: Python 3.10 ou superior.
 
 ```powershell
-git clone URL_DO_REPOSITORIO
-cd soulscraper
+git clone https://github.com/JoaoVRSM/soul-scraper.git
+cd soul-scraper
 py -3.10 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e ".[render]"
 .\.venv\Scripts\python.exe -m playwright install chromium
 ```
 
-## Como executar
+Para instalar também as dependências de teste:
 
-Inicie a interface:
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```
+
+## Inicie a aplicação
+
+### Interface completa
 
 ```powershell
 .\.venv\Scripts\python.exe -m soulscraper web
 ```
 
-Depois abra:
+Abra [http://127.0.0.1:8787](http://127.0.0.1:8787). No Windows, você também
+pode executar `iniciar_interface.bat`.
 
-```text
-http://127.0.0.1:8787
-```
-
-No Windows, você também pode dar dois cliques em `iniciar_interface.bat`.
-
-Para encerrar o servidor, pressione `Ctrl+C` no PowerShell.
-
-## API REST
-
-Inicie a API local:
+### API e portal de integração
 
 ```powershell
 .\.venv\Scripts\python.exe -m soulscraper api --port 8787
 ```
 
-No Windows, também é possível dar dois cliques em `iniciar_api.bat`. A
-documentação interativa fica em `http://127.0.0.1:8787/docs`, o schema OpenAPI
-em `http://127.0.0.1:8787/api/openapi.json` e a API versionada usa o prefixo
-`/api/v1`. O painel completo permanece na página inicial e o portal com
-explicações, exemplos e teste interativo fica disponível em `/integracao`.
+Depois abra:
 
-Para enviar a URL e receber o JSON pronto na mesma requisição:
+- Sistema: [http://127.0.0.1:8787](http://127.0.0.1:8787);
+- Portal da API: [http://127.0.0.1:8787/integracao](http://127.0.0.1:8787/integracao);
+- Swagger: [http://127.0.0.1:8787/docs](http://127.0.0.1:8787/docs);
+- OpenAPI: [http://127.0.0.1:8787/api/openapi.json](http://127.0.0.1:8787/api/openapi.json).
 
-```powershell
-$body = @{
-  url = "https://seu-site.com"
-  output = "catalog"
-  render_js = $true
-  validate_links = $true
-} | ConvertTo-Json
+No Windows, `iniciar_api.bat` inicia a API automaticamente.
 
-$catalogo = Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://127.0.0.1:8787/api/v1/scrape" `
-  -ContentType "application/json" `
-  -Body $body
+## API direta: envie uma URL e receba JSON
 
-$catalogo.filmes
+Use `POST /api/v1/scrape` quando o site consumidor puder aguardar a conclusão
+da raspagem na mesma requisição. O corpo mínimo é:
+
+```json
+{
+  "url": "seu-site.com"
+}
 ```
 
-O campo `output` aceita `catalog`, `movies`, `series` ou `full`. Para sites
-grandes, use o fluxo assíncrono:
+Somente `url` é obrigatório, e o `https://` pode ser omitido. O campo `output`
+e as configurações avançadas são opcionais. O `output` aceita:
+
+- `catalog`: filmes, séries e itens não identificados;
+- `movies`: somente filmes;
+- `series`: somente séries e episódios;
+- `full`: relatório técnico completo.
+
+### JavaScript
+
+```javascript
+const response = await fetch("https://sua-api.com/api/v1/scrape", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ url: "seu-site.com" })
+});
+
+if (!response.ok) throw new Error("A raspagem falhou");
+const catalogo = await response.json();
+```
+
+### Python
+
+```python
+import requests
+
+response = requests.post(
+    "https://sua-api.com/api/v1/scrape",
+    json={"url": "seu-site.com"},
+    timeout=None,
+)
+response.raise_for_status()
+catalogo = response.json()
+```
+
+Para receber um arquivo como download, adicione `"download": true`. A resposta
+inclui `Content-Disposition` com o nome correto, como `catalogo-links.json`.
+
+## API assíncrona: para sites grandes
+
+Quando não for adequado manter uma requisição aberta, use jobs:
 
 ```powershell
 $body = @{
@@ -134,44 +179,36 @@ $job = Invoke-RestMethod `
   -ContentType "application/json" `
   -Body $body
 
-$job.id
-```
-
-Consulte o andamento e, após o status `completed`, leia o catálogo:
-
-```powershell
 $id = $job.id
 Invoke-RestMethod "http://127.0.0.1:8787/api/v1/crawls/$id"
-$catalogo = Invoke-RestMethod "http://127.0.0.1:8787/api/v1/crawls/$id/catalog"
-$catalogo.filmes
+Invoke-RestMethod "http://127.0.0.1:8787/api/v1/crawls/$id/catalog"
 ```
 
 Endpoints principais:
 
-- `GET /api/v1/health`: saúde da API;
-- `POST /api/v1/scrape`: aguarda a raspagem e devolve o JSON escolhido;
-- `POST /api/v1/crawls`: inicia uma raspagem assíncrona;
-- `GET /api/v1/crawls`: lista as raspagens desta execução;
-- `GET /api/v1/crawls/{id}`: status e progresso;
-- `DELETE /api/v1/crawls/{id}`: cancela uma raspagem ativa;
-- `GET /api/v1/crawls/{id}/result`: resultado técnico completo;
-- `GET /api/v1/crawls/{id}/pages`: páginas com paginação e busca;
-- `GET /api/v1/crawls/{id}/findings`: referências com filtros;
-- `GET /api/v1/crawls/{id}/catalog`: catálogo pronto para integração;
-- `GET /api/v1/crawls/{id}/movies`: somente filmes;
-- `GET /api/v1/crawls/{id}/series`: somente séries e episódios;
-- `GET /api/v1/crawls/{id}/download/{arquivo}`: baixa JSON ou CSV.
+| Método | Endpoint | Função |
+| --- | --- | --- |
+| `GET` | `/api/v1/health` | Verifica a API |
+| `POST` | `/api/v1/scrape` | Aguarda e devolve um JSON |
+| `POST` | `/api/v1/crawls` | Inicia um job em segundo plano |
+| `GET` | `/api/v1/crawls/{id}` | Consulta status e progresso |
+| `DELETE` | `/api/v1/crawls/{id}` | Cancela um job ativo |
+| `GET` | `/api/v1/crawls/{id}/catalog` | Retorna o catálogo pronto |
+| `GET` | `/api/v1/crawls/{id}/movies` | Retorna filmes |
+| `GET` | `/api/v1/crawls/{id}/series` | Retorna séries e episódios |
+| `GET` | `/api/v1/crawls/{id}/download/{arquivo}` | Baixa JSON ou CSV |
 
-Os jobs ficam em memória e são reiniciados quando o servidor é encerrado; os
-arquivos concluídos permanecem em `resultados/web`. Para permitir chamadas de
-um frontend em outra origem, informe as origens explicitamente:
+Os jobs ficam em memória e são reiniciados quando o servidor é encerrado. Os
+relatórios concluídos permanecem em `resultados/web`.
+
+Para permitir chamadas de um frontend em outra origem:
 
 ```powershell
 .\.venv\Scripts\python.exe -m soulscraper api `
   --cors-origins "http://localhost:3000,https://seu-frontend.com"
 ```
 
-## Uso pela linha de comando
+## Linha de comando
 
 ```powershell
 .\.venv\Scripts\python.exe -m soulscraper crawl "https://seu-site.com" `
@@ -183,123 +220,33 @@ um frontend em outra origem, informe as origens explicitamente:
   --output ".\resultados\meu-site"
 ```
 
-Opções úteis:
+Opções úteis: `--subdomains`, `--respect-robots`, `--render-js`,
+`--browser-concurrency`, `--validate-links`, `--sitemap`, `--max-pages`,
+`--max-depth`, `--concurrency`, `--timeout`, `--delay` e `--max-mb`.
 
-```text
---subdomains / --no-subdomains
---respect-robots / --ignore-robots
---render-js
---browser-concurrency N
---validate-links
---sitemap / --no-sitemap
---max-pages N
---max-depth N
---concurrency N
---timeout SEGUNDOS
---delay SEGUNDOS
---max-mb N
---output CAMINHO
-```
+## Arquivos gerados
 
-## JSON de filmes
+| Arquivo | Conteúdo |
+| --- | --- |
+| `catalogo-links.json` | Filmes, séries e itens não identificados |
+| `filmes-links.json` | Filmes agrupados por provedor e idioma |
+| `series-links.json` | Séries com temporada, episódio e players |
+| `resultado.json` | Relatório técnico completo |
+| `referencias.csv` | Todas as referências encontradas |
+| `paginas.csv` | Páginas processadas, status e tempos |
 
-O arquivo `filmes-links.json` é fácil de importar em outro site:
-
-```json
-[
-  {
-    "nome": "Nome do filme",
-    "tmdb_id": 123456,
-    "tipo": "filme",
-    "byse": {
-      "dublado": ["https://..."],
-      "legendado": ["https://..."],
-      "nao_identificado": []
-    },
-    "doodstream": {
-      "dublado": ["https://..."],
-      "legendado": [],
-      "nao_identificado": []
-    },
-    "mixdrop": {
-      "dublado": ["https://..."],
-      "legendado": ["https://..."],
-      "nao_identificado": []
-    },
-    "streamtape": {
-      "dublado": ["https://..."],
-      "legendado": ["https://..."],
-      "nao_identificado": []
-    }
-  }
-]
-```
-
-## JSON de séries
-
-O arquivo `series-links.json` mantém cada player associado ao episódio correto:
-
-```json
-[
-  {
-    "nome": "Nome da série",
-    "tmdb_id": 94997,
-    "tipo": "serie",
-    "episodios": [
-      {
-        "nome": "Nome da série 1x1",
-        "temporada": 1,
-        "episodio": 1,
-        "byse": {
-          "dublado": ["https://..."],
-          "legendado": ["https://..."],
-          "nao_identificado": []
-        },
-        "doodstream": {
-          "dublado": ["https://..."],
-          "legendado": ["https://..."],
-          "nao_identificado": []
-        },
-        "mixdrop": {
-          "dublado": ["https://..."],
-          "legendado": ["https://..."],
-          "nao_identificado": []
-        },
-        "streamtape": {
-          "dublado": ["https://..."],
-          "legendado": ["https://..."],
-          "nao_identificado": []
-        }
-      }
-    ]
-  }
-]
-```
-
-Resultados sem idioma confirmado permanecem em `nao_identificado`. Conteúdos
-cujo tipo não pôde ser determinado ficam em `nao_identificados` dentro de
-`catalogo-links.json`.
-
-## Tratamento de resultados quebrados
-
-Quando a validação estiver ativa, o crawler classifica os links e permite:
-
-- **Revalidar** os resultados;
-- **Reextrair quebrados** diretamente das páginas de origem;
-- diferenciar links funcionando, redirecionados, expirados, bloqueados ou com
-  timeout.
-
-Para publicar os players em outro site, dê preferência aos resultados com
-contexto iniciado por `player-api-` e saúde `working`, `working_browser` ou
-`redirected`. Marcadores de texto, URLs incompletas e itens `unchecked` não
-devem ser tratados como links reproduzíveis.
+Os links de idioma ficam separados em `dublado`, `legendado` e
+`nao_identificado`. Para resultados publicáveis, prefira saúde
+`working`, `working_browser` ou `redirected`.
 
 ## Testes
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 .\.venv\Scripts\python.exe -m pytest -q
 ```
+
+O projeto inclui testes do crawler, extrator, relatórios, validação, painel,
+portal de integração da API e endpoint direto de raspagem.
 
 ## Estrutura
 
@@ -309,12 +256,15 @@ soulscraper/
 ├── extractor.py    # extração e metadados
 ├── reporting.py    # JSON e CSV
 ├── validator.py    # saúde dos links
-├── webapp.py       # API REST e interface local
-└── web/            # interface
+├── webapp.py       # API REST e rotas das interfaces
+└── web/
+    ├── index.html  # painel completo
+    ├── api.html    # portal de integração
+    └── *.css/*.js  # estilos e comportamento
 ```
 
 ## Uso responsável
 
 O projeto não quebra autenticação, CAPTCHA, paywall ou outras proteções de
-acesso. Comece com concorrência baixa em servidores menores e respeite os
-limites do domínio auditado.
+acesso. Comece com concorrência baixa em servidores menores, respeite
+`robots.txt` e audite apenas domínios autorizados.
