@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Documentação e teste da API Soul Scraper.">
+    <meta name="description" content="Documentação para integrar a API Soul Scraper ao seu site.">
     <title>Soul Scraper API</title>
-    <link rel="stylesheet" href="/static/api.css?v=1">
+    <link rel="stylesheet" href="/static/api.css?v=3">
   </head>
   <body>
     <div class="glow glow-one"></div>
@@ -18,9 +18,9 @@
       </a>
       <nav>
         <a href="#como-usar">Como usar</a>
-        <a href="#testar">Testar</a>
+        <a href="#codigo">Integração</a>
         <a href="/docs" target="_blank">Swagger ↗</a>
-        <a class="panel-link" href="/">Voltar ao painel</a>
+        <a class="panel-link" href="/">Abrir o sistema</a>
       </nav>
     </header>
 
@@ -28,23 +28,24 @@
       <section class="hero">
         <div class="hero-copy">
           <div class="online"><i></i><span id="api-state">API ONLINE</span></div>
-          <h1>Envie uma URL.<br><span>Receba o JSON pronto.</span></h1>
+          <h1>Seu site pede.<br><span>O JSON volta pronto.</span></h1>
           <p>
-            Seu site informa qual domínio autorizado deseja raspar. A Soul Scraper
-            aguarda a conclusão e devolve o catálogo, os filmes, as séries ou o
-            relatório técnico diretamente na resposta da API.
+            Seu próprio site envia para a FastAPI o endereço de outro site
+            autorizado. A Soul Scraper faz a raspagem e devolve o catálogo JSON
+            diretamente para o seu site importar, salvar ou exibir.
           </p>
+          <div class="route-strip" aria-label="Fluxo da integração">
+            <span>OUTRO SITE</span><i>→</i><span>FASTAPI</span><i>→</i><span>JSON</span><i>→</i><strong>SEU SITE</strong>
+          </div>
           <div class="hero-actions">
-            <a class="button primary" href="#testar">Testar uma requisição</a>
-            <a class="button secondary" href="#codigo">Ver código de integração</a>
+            <a class="button primary" href="#codigo">Integrar no meu site</a>
+            <a class="button secondary" href="#como-usar">Ver como funciona</a>
           </div>
         </div>
         <div class="request-demo" aria-label="Exemplo de requisição">
           <div class="window-bar"><span></span><span></span><span></span><small>POST /api/v1/scrape</small></div>
           <pre><code><b>{</b>
-  <em>"url"</em>: <strong>"https://seu-site.com"</strong>,
-  <em>"output"</em>: <strong>"catalog"</strong>,
-  <em>"render_js"</em>: <u>true</u>
+  <em>"url"</em>: <strong>"seu-site.com"</strong>
 <b>}</b></code></pre>
           <div class="response-line"><span>200 OK</span><span>application/json</span></div>
         </div>
@@ -54,69 +55,20 @@
         <div class="section-title">
           <span>FLUXO DIRETO</span>
           <h2>Uma requisição, três etapas</h2>
-          <p>O endpoint permanece aguardando e só responde depois que o arquivo JSON estiver pronto.</p>
+          <p>Só a URL do site de origem é obrigatória. A resposta volta para quem fez a requisição.</p>
         </div>
         <div class="flow-grid">
-          <article><span>01</span><div class="flow-icon">↗</div><h3>Seu site envia</h3><p>Faça um POST com a URL do domínio e escolha o formato desejado.</p></article>
-          <article><span>02</span><div class="flow-icon pulse-icon">◎</div><h3>A API processa</h3><p>O crawler percorre as páginas autorizadas, extrai e organiza os resultados.</p></article>
-          <article><span>03</span><div class="flow-icon">{ }</div><h3>Seu site recebe</h3><p>A resposta HTTP já contém o JSON pronto para salvar, importar ou exibir.</p></article>
-        </div>
-      </section>
-
-      <section id="testar" class="section tester-section">
-        <div class="section-title compact">
-          <span>TESTE AO VIVO</span>
-          <h2>Experimente a API agora</h2>
-          <p>Use apenas um site seu ou um domínio para o qual você possui autorização.</p>
-        </div>
-        <div class="tester-grid">
-          <form id="try-form" class="card try-card">
-            <label>
-              <span>URL do site autorizado</span>
-              <input id="try-url" type="url" required placeholder="https://seu-site.com">
-            </label>
-            <div class="form-row">
-              <label>
-                <span>JSON de saída</span>
-                <select id="try-output">
-                  <option value="catalog">Catálogo completo</option>
-                  <option value="movies">Somente filmes</option>
-                  <option value="series">Somente séries</option>
-                  <option value="full">Relatório técnico</option>
-                </select>
-              </label>
-              <label>
-                <span>Limite de páginas</span>
-                <input id="try-pages" type="number" min="1" max="100000" value="100">
-              </label>
-            </div>
-            <label class="check-row">
-              <input id="try-js" type="checkbox" checked>
-              <span><strong>Renderizar JavaScript</strong><small>Recomendado para players dinâmicos.</small></span>
-            </label>
-            <button id="try-button" class="button primary full" type="submit">Executar e receber JSON</button>
-            <p id="try-error" class="error" role="alert" hidden></p>
-          </form>
-
-          <div class="card result-card" aria-live="polite">
-            <div class="result-head">
-              <div><span>RESPOSTA</span><strong id="result-status">Aguardando teste</strong></div>
-              <button id="download-result" type="button" hidden>Baixar .json</button>
-            </div>
-            <div id="result-empty" class="result-empty">
-              <div>{ }</div>
-              <p>O conteúdo devolvido pela API aparecerá aqui.</p>
-            </div>
-            <pre id="result-json" hidden><code></code></pre>
-          </div>
+          <article><span>01</span><div class="flow-icon">↗</div><h3>Seu site faz o pedido</h3><p>O backend do seu site envia um POST com a URL do site que será raspado.</p></article>
+          <article><span>02</span><div class="flow-icon pulse-icon">◎</div><h3>A FastAPI busca os dados</h3><p>O crawler percorre o outro site autorizado e organiza filmes, séries e players.</p></article>
+          <article><span>03</span><div class="flow-icon">{ }</div><h3>O JSON retorna</h3><p>Seu site recebe a resposta e pode gravar no banco, importar ou mostrar os dados.</p></article>
         </div>
       </section>
 
       <section id="codigo" class="section code-section">
         <div class="section-title compact">
           <span>INTEGRAÇÃO</span>
-          <h2>Copie e use no seu site</h2>
-          <p>A resposta já é um objeto JSON. Escolha a linguagem do seu projeto.</p>
+          <h2>Coloque no backend do seu site</h2>
+          <p>Troque <code>https://sua-api.com</code> pelo endereço onde esta FastAPI estiver publicada.</p>
         </div>
         <div class="code-card">
           <div class="code-toolbar">
@@ -130,6 +82,7 @@
           </div>
           <pre><code id="code-example"></code></pre>
         </div>
+        <p class="integration-note"><strong>Recomendado:</strong> faça esta chamada no backend do seu site. Se chamar direto do navegador, libere somente o domínio do seu frontend com <code>--cors-origins</code>.</p>
       </section>
 
       <section class="section endpoints-section">
@@ -138,7 +91,7 @@
           <h2>Direto ou assíncrono</h2>
         </div>
         <div class="endpoint-list">
-          <article class="featured"><span class="method post">POST</span><code>/api/v1/scrape</code><p>Envia a URL, aguarda e recebe o JSON na mesma requisição.</p><b>RECOMENDADO</b></article>
+          <article class="featured"><span class="method post">POST</span><code>/api/v1/scrape</code><p>Envie <code>{"url": "seu-site.com"}</code> e receba o JSON.</p><b>RECOMENDADO</b></article>
           <article><span class="method post">POST</span><code>/api/v1/crawls</code><p>Inicia em segundo plano para sites muito grandes.</p></article>
           <article><span class="method get">GET</span><code>/api/v1/crawls/{id}</code><p>Consulta o progresso da raspagem assíncrona.</p></article>
           <article><span class="method get">GET</span><code>/api/v1/crawls/{id}/catalog</code><p>Obtém o catálogo após a conclusão.</p></article>
@@ -150,6 +103,6 @@
       <span>SOUL SCRAPER API v2.0</span>
       <span>Use somente em domínios autorizados.</span>
     </footer>
-    <script src="/static/api.js?v=1" defer></script>
+    <script src="/static/api.js?v=3" defer></script>
   </body>
 </html>

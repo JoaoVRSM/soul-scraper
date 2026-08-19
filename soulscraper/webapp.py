@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import hashlib
 import os
+import secrets
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -9,9 +13,9 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
@@ -41,32 +45,68 @@ DOWNLOAD_FILES = {
 
 
 class CrawlRequest(BaseModel):
-    url: str = Field(min_length=8, max_length=2048)
-    max_pages: int = Field(default=5000, ge=1, le=100_000)
-    max_depth: int = Field(default=20, ge=0, le=100)
-    concurrency: int = Field(default=12, ge=1, le=64)
-    browser_concurrency: int = Field(default=4, ge=1, le=12)
-    timeout: float = Field(default=20.0, ge=1, le=180)
-    delay: float = Field(default=0.0, ge=0, le=60)
-    max_mb: float = Field(default=8.0, ge=0.1, le=100)
-    subdomains: bool = True
-    respect_robots: bool = True
-    render_js: bool = True
-    sitemap: bool = True
-    validate_links: bool = True
+    url: str = Field(
+        min_length=3,
+        max_length=2048,
+        description="Site autorizado que será analisado. O https:// é opcional.",
+        examples=["https://seu-site.com"],
+    )
+    max_pages: int = Field(default=5000, ge=1, le=100_000, description="Limite de páginas.")
+    max_depth: int = Field(default=20, ge=0, le=100, description="Profundidade máxima de links.")
+    concurrency: int = Field(default=12, ge=1, le=64, description="Requisições HTTP simultâneas.")
+    browser_concurrency: int = Field(default=4, ge=1, le=12, description="Abas simultâneas do navegador.")
+    timeout: float = Field(default=20.0, ge=1, le=180, description="Timeout por página, em segundos.")
+    delay: float = Field(default=0.0, ge=0, le=60, description="Pausa entre requisições, em segundos.")
+    max_mb: float = Field(default=8.0, ge=0.1, le=100, description="Tamanho máximo de cada resposta.")
+    subdomains: bool = Field(default=True, description="Inclui subdomínios do site.")
+    respect_robots: bool = Field(default=True, description="Respeita as regras do robots.txt.")
+    render_js: bool = Field(default=True, description="Abre páginas dinâmicas no Chromium.")
+    sitemap: bool = Field(default=True, description="Usa o sitemap para descobrir páginas.")
+    validate_links: bool = Field(default=True, description="Confere a saúde dos players encontrados.")
 
     @field_validator("url")
     @classmethod
     def validate_url(cls, value: str) -> str:
         value = value.strip()
+        if "://" not in value:
+            value = f"https://{value}"
         if not value.lower().startswith(("http://", "https://")):
-            raise ValueError("Informe uma URL completa começando com http:// ou https://")
+            raise ValueError("Use um endereço de site HTTP ou HTTPS")
         return value
 
 
 class ScrapeRequest(CrawlRequest):
-    output: Literal["catalog", "full", "movies", "series"] = "catalog"
-    download: bool = False
+    max_pages: int = Field(
+        default=300,
+        ge=1,
+        le=100_000,
+        description="Limite de páginas. O padrão equilibrado é 300.",
+    )
+    max_depth: int = Field(
+        default=10,
+        ge=0,
+        le=100,
+        description="Profundidade máxima. O padrão equilibrado é 10.",
+    )
+    browser_concurrency: int = Field(
+        default=2,
+        ge=1,
+        le=12,
+        description="Abas simultâneas do navegador. O padrão é 2.",
+    )
+    output: Literal["catalog", "full", "movies", "series"] = Field(
+        default="catalog",
+        description="Formato do JSON: catálogo, relatório completo, filmes ou séries.",
+    )
+    download: bool = Field(
+        default=False,
+        description="Força o navegador a baixar a resposta como arquivo .json.",
+    )
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=500)
 
 
 JobStatus = Literal[
@@ -466,16 +506,149 @@ class JobManager:
 
 manager = JobManager()
 app = FastAPI(
-    title="Site Soul Scraper",
+    title="Soul Scraper API",
     description=(
-        "API REST e painel local para auditorias autorizadas de sites. "
-        "Use os endpoints /api/v1 para novas integrações."
+        "API para o seu site enviar a URL de outro domínio autorizado e receber "
+        "o catálogo JSON. Para começar, envie somente o campo `url` em "
+        "`POST /api/v1/scrape`."
     ),
     version="2.0.0",
     openapi_url="/api/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
+    openapi_tags=[
+        {
+            "name": "Comece aqui",
+            "description": "A forma mais simples: envie uma URL e receba o JSON pronto.",
+        },
+        {
+            "name": "Raspagens em segundo plano",
+            "description": "Use para sites grandes, com consulta de progresso e cancelamento.",
+        },
+        {
+            "name": "API v1",
+            "description": "Consulta detalhada dos resultados e operações avançadas.",
+        },
+    ],
 )
+
+
+def _valid_basic_auth(request: Request, username: str, password: str) -> bool:
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, encoded = authorization.partition(" ")
+    if scheme.lower() != "basic" or not encoded:
+        return False
+
+    try:
+        decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError):
+        return False
+
+    supplied_username, separator, supplied_password = decoded.partition(":")
+    return bool(separator) and secrets.compare_digest(
+        supplied_username, username
+    ) and secrets.compare_digest(supplied_password, password)
+
+
+def _auth_cookie_value(username: str, password: str) -> str:
+    return hashlib.sha256(f"{username}\0{password}".encode("utf-8")).hexdigest()
+
+
+LOGIN_PAGE = """<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Acesso · Soul Scraper</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; color: #f4f7ef;
+      background: radial-gradient(circle at 20% 15%, #243520 0, #0d130d 34%, #080a08 72%); }
+    main { width: min(92vw, 430px); padding: 38px; border: 1px solid #344631; border-radius: 24px;
+      background: rgba(14, 20, 14, .92); box-shadow: 0 28px 80px rgba(0, 0, 0, .46); }
+    .eyebrow { margin: 0 0 12px; color: #b8ff3d; font-size: 12px; font-weight: 800; letter-spacing: .16em; }
+    h1 { margin: 0; font-size: clamp(30px, 8vw, 43px); line-height: .98; }
+    p { color: #aeb9aa; line-height: 1.55; }
+    label { display: block; margin-top: 18px; color: #dce5d8; font-size: 13px; font-weight: 700; }
+    input { width: 100%; margin-top: 8px; padding: 14px 15px; border: 1px solid #3a4937; border-radius: 12px;
+      color: #fff; background: #090d09; outline: none; }
+    input:focus { border-color: #b8ff3d; box-shadow: 0 0 0 3px rgba(184, 255, 61, .12); }
+    button { width: 100%; margin-top: 24px; padding: 15px; border: 0; border-radius: 12px; cursor: pointer;
+      color: #0b1009; background: #b8ff3d; font-weight: 900; letter-spacing: .06em; }
+    #error { min-height: 20px; margin: 14px 0 0; color: #ff8d91; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">SOUL SCRAPER · ÁREA PROTEGIDA</p>
+    <h1>Entre para continuar.</h1>
+    <p>O painel online é privado para impedir o uso não autorizado do crawler.</p>
+    <form id="login-form">
+      <label for="username">Usuário</label>
+      <input id="username" name="username" autocomplete="username" required autofocus>
+      <label for="password">Senha</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">ENTRAR NO PAINEL</button>
+      <p id="error" role="alert"></p>
+    </form>
+  </main>
+  <script>
+    document.querySelector("#login-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const error = document.querySelector("#error");
+      error.textContent = "";
+      const response = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: document.querySelector("#username").value,
+          password: document.querySelector("#password").value
+        })
+      });
+      if (!response.ok) { error.textContent = "Usuário ou senha incorretos."; return; }
+      location.replace("/");
+    });
+  </script>
+</body>
+</html>"""
+
+
+@app.middleware("http")
+async def protect_online_deployment(request: Request, call_next):
+    """Protege toda a interface quando credenciais forem definidas no ambiente."""
+    username = os.getenv("SOULSCRAPER_BASIC_USER", "").strip()
+    password = os.getenv("SOULSCRAPER_BASIC_PASSWORD", "")
+    if not username or not password:
+        return await call_next(request)
+    if request.url.path == "/login":
+        return await call_next(request)
+
+    cookie_value = _auth_cookie_value(username, password)
+    has_valid_cookie = secrets.compare_digest(
+        request.cookies.get("soul_scraper_auth", ""), cookie_value
+    )
+    has_valid_basic_auth = _valid_basic_auth(request, username, password)
+    if not has_valid_cookie and not has_valid_basic_auth:
+        if request.method == "GET" and "text/html" in request.headers.get("Accept", ""):
+            return HTMLResponse(LOGIN_PAGE, status_code=200)
+        return PlainTextResponse(
+            "Autenticacao necessaria.",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="Soul Scraper"'},
+        )
+
+    response = await call_next(request)
+    if has_valid_basic_auth and not has_valid_cookie:
+        response.set_cookie(
+            "soul_scraper_auth",
+            cookie_value,
+            max_age=43_200,
+            httponly=True,
+            secure=True,
+            samesite="strict",
+        )
+    return response
 
 cors_origins = [
     origin.strip()
@@ -491,6 +664,28 @@ if cors_origins:
         allow_headers=["Content-Type", "Authorization"],
     )
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+
+
+@app.post("/login", include_in_schema=False)
+async def login(credentials: LoginRequest) -> JSONResponse:
+    username = os.getenv("SOULSCRAPER_BASIC_USER", "").strip()
+    password = os.getenv("SOULSCRAPER_BASIC_PASSWORD", "")
+    valid = bool(username and password) and secrets.compare_digest(
+        credentials.username, username
+    ) and secrets.compare_digest(credentials.password, password)
+    if not valid:
+        return JSONResponse({"detail": "Credenciais invalidas."}, status_code=401)
+
+    response = JSONResponse({"status": "ok"})
+    response.set_cookie(
+        "soul_scraper_auth",
+        _auth_cookie_value(username, password),
+        max_age=43_200,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+    )
+    return response
 
 
 @app.get("/", include_in_schema=False)
@@ -517,16 +712,44 @@ async def api_portal() -> FileResponse:
     )
 
 
+@app.get(f"{API_PREFIX}", tags=["Comece aqui"], summary="Como usar a API")
+async def api_guide() -> dict[str, Any]:
+    """Mostra o caminho mais curto para integrar a API."""
+    return {
+        "message": "Seu site envia a URL de origem e recebe o JSON na resposta.",
+        "flow": ["site_de_origem", "soul_scraper_fastapi", "json", "seu_site"],
+        "request": {
+            "method": "POST",
+            "endpoint": f"{API_PREFIX}/scrape",
+            "body": {"url": "https://seu-site.com"},
+        },
+        "response": {
+            "content_type": "application/json",
+            "default_file": "catalogo-links.json",
+            "use": "Seu site pode importar, salvar no banco ou exibir os dados.",
+        },
+        "interfaces": {
+            "sistema_de_raspagem": "/",
+            "portal_de_integracao": "/integracao",
+            "documentacao_interativa": "/docs",
+        },
+    }
+
+
 @app.get("/api/health", include_in_schema=False)
-@app.get(f"{API_PREFIX}/health", tags=["API v1"])
+@app.get(f"{API_PREFIX}/health", tags=["Comece aqui"])
 async def health() -> dict[str, str]:
     return {"status": "ok", "version": "2.0.0"}
 
 
 @app.post(
     f"{API_PREFIX}/scrape",
-    tags=["API v1"],
-    summary="Raspa um site e devolve o JSON ao concluir",
+    tags=["Comece aqui"],
+    summary="Envie uma URL e receba o JSON pronto",
+    description=(
+        "O único campo obrigatório é `url`. A requisição aguarda a raspagem "
+        "terminar e devolve o formato escolhido diretamente na resposta."
+    ),
     response_model=None,
 )
 async def scrape_and_wait(request: ScrapeRequest) -> JSONResponse:
@@ -562,7 +785,12 @@ async def scrape_and_wait(request: ScrapeRequest) -> JSONResponse:
 
 
 @app.post("/api/jobs", status_code=202, include_in_schema=False)
-@app.post(f"{API_PREFIX}/crawls", status_code=202, tags=["API v1"])
+@app.post(
+    f"{API_PREFIX}/crawls",
+    status_code=202,
+    tags=["Raspagens em segundo plano"],
+    summary="Inicia uma raspagem com progresso",
+)
 async def create_job(request: CrawlRequest) -> JobResponse:
     try:
         job = await manager.create(request)
